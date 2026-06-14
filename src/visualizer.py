@@ -11,6 +11,8 @@ matplotlib.use("Agg")
 
 import matplotlib.pyplot as plt
 
+from src.headers_config import SECURITY_HEADERS
+
 # Türkçe karakterlerin grafiklerde doğru görüntülenmesi için.
 plt.rcParams["font.family"] = "DejaVu Sans"
 
@@ -139,3 +141,76 @@ def plot_grade_distribution(
     plt.close(fig)
 
     return str(file_path)
+
+
+def plot_header_coverage(
+    results: list[dict], output_path: str, timestamp: str | None = None
+) -> str:
+    """Her güvenlik başlığının sitelerde bulunma yüzdesini bar chart olarak çizer.
+
+    %50'nin altındaki kullanım oranları kırmızı, üstündekiler yeşil ile gösterilir.
+
+    Args:
+        results: Her biri bir sitenin analiz/skor sonucunu içeren sözlük listesi.
+        output_path: PNG dosyasının kaydedileceği klasör (yoksa oluşturulur).
+        timestamp: Dosya adında kullanılacak zaman damgası (verilmezse otomatik üretilir).
+
+    Returns:
+        Oluşturulan PNG dosyasının yolu.
+    """
+    output_dir = _ensure_output_dir(output_path)
+    file_path = output_dir / f"coverage_{_resolve_timestamp(timestamp)}.png"
+
+    valid_results = [r for r in results if not r.get("error")]
+    total = len(valid_results)
+
+    header_names = list(SECURITY_HEADERS.keys())
+    percentages = []
+    for header_name in header_names:
+        if total == 0:
+            percentages.append(0.0)
+            continue
+        present_count = sum(
+            1
+            for r in valid_results
+            if r["headers_analysis"].get(header_name, {}).get("present")
+        )
+        percentages.append(present_count / total * 100)
+
+    colors = ["#43a047" if p >= 50 else "#e53935" for p in percentages]
+
+    fig, ax = plt.subplots(figsize=(10, 6))
+    y_positions = range(len(header_names))
+    ax.barh(y_positions, percentages, color=colors)
+    ax.set_yticks(list(y_positions))
+    ax.set_yticklabels(header_names)
+    ax.invert_yaxis()
+    ax.set_xlim(0, 100)
+    ax.set_xlabel("Kullanım Oranı (%)")
+    ax.set_title("Güvenlik Başlıklarının Kullanım Oranı (%)")
+
+    for y, p in zip(y_positions, percentages):
+        ax.text(p + 1, y, f"{p:.0f}%", va="center")
+
+    fig.tight_layout()
+    fig.savefig(file_path, dpi=DPI)
+    plt.close(fig)
+
+    return str(file_path)
+
+
+def generate_all_charts(results: list[dict], timestamp: str) -> list[str]:
+    """Skor karşılaştırma, not dağılımı ve başlık kapsama grafiklerini tek seferde üretir.
+
+    Args:
+        results: Her biri bir sitenin analiz/skor sonucunu içeren sözlük listesi.
+        timestamp: Üretilecek tüm dosya adlarında kullanılacak ortak zaman damgası.
+
+    Returns:
+        Oluşturulan PNG dosyalarının yollarını içeren bir liste.
+    """
+    return [
+        plot_score_comparison(results, DEFAULT_OUTPUT_DIR, timestamp),
+        plot_grade_distribution(results, DEFAULT_OUTPUT_DIR, timestamp),
+        plot_header_coverage(results, DEFAULT_OUTPUT_DIR, timestamp),
+    ]
