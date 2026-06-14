@@ -7,6 +7,12 @@ from datetime import datetime
 from pathlib import Path
 
 import pandas as pd
+from tabulate import tabulate
+
+from src.headers_config import SECURITY_HEADERS
+
+# Harf notlarının "Özet İstatistikler" bölümünde gösterim sırası.
+GRADE_ORDER = ["A+", "A", "B", "C", "D", "F"]
 
 CSV_COLUMNS = [
     "url",
@@ -109,5 +115,208 @@ def export_csv(results: list[dict], output_path: str) -> str:
 
     df = pd.DataFrame(rows, columns=CSV_COLUMNS)
     df.to_csv(file_path, index=False, encoding="utf-8-sig")
+
+    return str(file_path)
+
+
+def _format_header_value(value: str) -> str:
+    """Markdown tablosunda satırı bozmaması için başlık değerini kısaltır/temizler."""
+    if not value:
+        return "-"
+    cleaned = value.replace("|", "\\|").replace("\n", " ")
+    if len(cleaned) > 80:
+        cleaned = cleaned[:77] + "..."
+    return f"`{cleaned}`"
+
+
+def _header_status_label(header_result: dict) -> str:
+    """Bir başlığın durumunu Markdown için kısa bir etikete çevirir."""
+    if header_result["valid"]:
+        return "✅ Geçerli"
+    if header_result["present"]:
+        return "⚠️ Hatalı"
+    return "❌ Eksik"
+
+
+def export_markdown(results: list[dict], output_path: str) -> str:
+    """Analiz sonuçlarını akademik formatta bir Markdown raporuna yazar.
+
+    Rapor; özet istatistikler, karşılaştırmalı tablo, her site için detaylı
+    analiz ve genel bir değerlendirme bölümü içerir.
+
+    Args:
+        results: Her biri bir sitenin analiz/skor sonucunu içeren sözlük listesi.
+        output_path: Raporun yazılacağı klasör (yoksa oluşturulur).
+
+    Returns:
+        Oluşturulan Markdown dosyasının yolu.
+    """
+    output_dir = Path(output_path)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    file_path = output_dir / f"analysis_{timestamp}.md"
+
+    now = datetime.now()
+    valid_results = [r for r in results if not r.get("error")]
+
+    lines: list[str] = []
+
+    # Başlık
+    lines.append("# HTTP Güvenlik Başlıkları Analiz Raporu")
+    lines.append("")
+    lines.append(f"**Analiz Tarihi:** {now.strftime('%d.%m.%Y %H:%M:%S')}")
+    lines.append("")
+
+    # Özet istatistikler
+    lines.append("## Özet İstatistikler")
+    lines.append("")
+    lines.append(f"- **Analiz edilen site sayısı:** {len(results)}")
+    lines.append(f"- **Erişilebilen site sayısı:** {len(valid_results)}")
+
+    if valid_results:
+        scores = [r["total_score"] for r in valid_results]
+        avg_score = sum(scores) / len(scores)
+        best = max(valid_results, key=lambda r: r["total_score"])
+        worst = min(valid_results, key=lambda r: r["total_score"])
+
+        lines.append(f"- **Ortalama skor:** {avg_score:.2f} / 100")
+        lines.append(
+            f"- **En yüksek skor:** {best['url']} "
+            f"({best['total_score']:.2f}, {best['letter_grade']})"
+        )
+        lines.append(
+            f"- **En düşük skor:** {worst['url']} "
+            f"({worst['total_score']:.2f}, {worst['letter_grade']})"
+        )
+
+        grade_counts: dict[str, int] = {}
+        for r in valid_results:
+            grade_counts[r["letter_grade"]] = grade_counts.get(r["letter_grade"], 0) + 1
+
+        distribution = ", ".join(
+            f"{grade}: {grade_counts[grade]}" for grade in GRADE_ORDER if grade in grade_counts
+        )
+        lines.append(f"- **Not dağılımı:** {distribution}")
+    else:
+        lines.append("- Analiz edilen sitelerin hiçbirine erişilemedi.")
+
+    lines.append("")
+
+    # Karşılaştırmalı tablo
+    lines.append("## Karşılaştırmalı Tablo")
+    lines.append("")
+
+    table_rows = []
+    for r in results:
+        if r.get("error"):
+            table_rows.append([r["url"], "-", "F", "-", "-", "-"])
+        else:
+            table_rows.append(
+                [
+                    r["url"],
+                    f"{r['total_score']:.2f}",
+                    r["letter_grade"],
+                    r["headers_present"],
+                    r["headers_missing"],
+                    len(r["critical_issues"]),
+                ]
+            )
+
+    lines.append(
+        tabulate(
+            table_rows,
+            headers=["Site", "Skor", "Not", "Mevcut Başlık", "Eksik Başlık", "Kritik Sorun"],
+            tablefmt="github",
+        )
+    )
+    lines.append("")
+
+    # Detaylı analiz
+    lines.append("## Detaylı Analiz")
+    lines.append("")
+
+    for r in results:
+        lines.append(f"### {r['url']}")
+        lines.append("")
+
+        if r.get("error"):
+            lines.append(f"**Hata:** {r['error']}")
+            lines.append("")
+            continue
+
+        lines.append(f"- **Son URL:** {r['final_url']}")
+        lines.append(f"- **Durum Kodu:** {r['status_code']}")
+        lines.append(f"- **HTTPS:** {'Evet' if r['https'] else 'Hayır'}")
+        lines.append(f"- **Skor:** {r['total_score']:.2f} / 100 ({r['letter_grade']})")
+        lines.append(f"- **Yanıt Süresi:** {r['response_time_ms']} ms")
+        lines.append("")
+
+        lines.append("| Başlık | Durum | Değer |")
+        lines.append("|---|---|---|")
+        for header_name in SECURITY_HEADERS:
+            header_result = r["headers_analysis"].get(header_name, {})
+            status = _header_status_label(header_result)
+            value = _format_header_value(header_result.get("value", ""))
+            lines.append(f"| {header_name} | {status} | {value} |")
+        lines.append("")
+
+        if r["critical_issues"]:
+            lines.append("**Kritik Sorunlar:**")
+            for issue in r["critical_issues"]:
+                lines.append(f"- {issue}")
+            lines.append("")
+
+        if r["recommendations"]:
+            lines.append("**Öneriler:**")
+            for rec in r["recommendations"]:
+                lines.append(f"- {rec}")
+            lines.append("")
+
+    # Sonuç ve genel değerlendirme
+    lines.append("## Sonuç ve Genel Değerlendirme")
+    lines.append("")
+
+    if valid_results:
+        header_coverage = {}
+        for header_name in SECURITY_HEADERS:
+            present_count = sum(
+                1
+                for r in valid_results
+                if r["headers_analysis"].get(header_name, {}).get("present")
+            )
+            header_coverage[header_name] = present_count
+
+        most_common = max(header_coverage.items(), key=lambda item: item[1])
+        least_common = min(header_coverage.items(), key=lambda item: item[1])
+
+        lines.append(
+            f"Bu raporda toplam {len(results)} site analiz edilmiş, bunlardan "
+            f"{len(valid_results)} sitesine başarıyla erişilmiştir. Ortalama "
+            f"güvenlik skoru **{avg_score:.2f}/100** olarak hesaplanmıştır."
+        )
+        lines.append("")
+        lines.append(
+            f"En yaygın uygulanan güvenlik başlığı **{most_common[0]}** "
+            f"({most_common[1]}/{len(valid_results)} sitede mevcut), en az "
+            f"uygulanan başlık ise **{least_common[0]}** "
+            f"({least_common[1]}/{len(valid_results)} sitede mevcut) olarak "
+            "tespit edilmiştir."
+        )
+        lines.append("")
+        lines.append(
+            "Genel olarak, analiz edilen sitelerin güvenlik başlığı "
+            "yapılandırmasında geliştirmeye açık alanlar bulunmaktadır. "
+            "Yukarıda her site için listelenen önerilerin uygulanması; "
+            "Cross-Site Scripting (XSS), clickjacking, MIME sniffing ve "
+            "ortadaki adam (MITM) gibi yaygın saldırı türlerine karşı "
+            "direnci önemli ölçüde artıracaktır."
+        )
+    else:
+        lines.append("Hiçbir siteye erişilemediği için genel bir değerlendirme yapılamamıştır.")
+
+    lines.append("")
+
+    file_path.write_text("\n".join(lines), encoding="utf-8")
 
     return str(file_path)
