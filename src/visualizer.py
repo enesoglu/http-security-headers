@@ -201,8 +201,92 @@ def plot_header_coverage(
     return str(file_path)
 
 
+def plot_header_matrix(
+    results: list[dict], output_path: str, timestamp: str | None = None
+) -> str:
+    """Her sitenin hangi güvenlik başlıklarına sahip olduğunu ısı haritası olarak çizer.
+
+    Hücreler: yeşil = geçerli, sarı = mevcut ama hatalı, kırmızı = eksik, gri = erişilemedi.
+
+    Args:
+        results: Her biri bir sitenin analiz/skor sonucunu içeren sözlük listesi.
+        output_path: PNG dosyasının kaydedileceği klasör (yoksa oluşturulur).
+        timestamp: Dosya adında kullanılacak zaman damgası (verilmezse otomatik üretilir).
+
+    Returns:
+        Oluşturulan PNG dosyasının yolu.
+    """
+    from matplotlib.patches import Patch
+
+    output_dir = _ensure_output_dir(output_path)
+    file_path = output_dir / f"matrix_{_resolve_timestamp(timestamp)}.png"
+
+    header_names = list(SECURITY_HEADERS.keys())
+    short_headers = ["HSTS", "CSP", "XFO", "XCTO", "Ref-P", "Perm-P", "XSS-P", "COOP", "COEP", "CORP"]
+    site_labels = [_short_label(r["url"]) for r in results]
+
+    n_sites = len(results)
+    n_headers = len(header_names)
+
+    cell_colors = {"valid": "#43a047", "partial": "#fdd835", "missing": "#e53935", "na": "#9e9e9e"}
+    cell_texts = {"valid": "✓", "partial": "~", "missing": "✗", "na": "-"}
+    text_colors = {"valid": "white", "partial": "#333333", "missing": "white", "na": "white"}
+
+    fig_height = max(4, 0.55 * n_sites + 2)
+    fig, ax = plt.subplots(figsize=(14, fig_height))
+
+    for i, result in enumerate(results):
+        for j, header_name in enumerate(header_names):
+            if result.get("error"):
+                state = "na"
+            else:
+                hr = result["headers_analysis"].get(header_name, {})
+                if hr.get("valid"):
+                    state = "valid"
+                elif hr.get("present"):
+                    state = "partial"
+                else:
+                    state = "missing"
+
+            rect = plt.Rectangle(
+                [j, i], 1, 1,
+                facecolor=cell_colors[state],
+                edgecolor="white",
+                linewidth=1.5,
+            )
+            ax.add_patch(rect)
+            ax.text(
+                j + 0.5, i + 0.5, cell_texts[state],
+                ha="center", va="center", fontsize=11,
+                color=text_colors[state], fontweight="bold",
+            )
+
+    ax.set_xlim(0, n_headers)
+    ax.set_ylim(0, n_sites)
+    ax.set_xticks([j + 0.5 for j in range(n_headers)])
+    ax.set_xticklabels(short_headers, rotation=45, ha="right", fontsize=9)
+    ax.set_yticks([i + 0.5 for i in range(n_sites)])
+    ax.set_yticklabels(site_labels, fontsize=9)
+    ax.invert_yaxis()
+    ax.set_title("Güvenlik Başlığı Varlık Matrisi", pad=12)
+
+    legend_elements = [
+        Patch(facecolor=cell_colors["valid"], label="Geçerli (✓)"),
+        Patch(facecolor=cell_colors["partial"], label="Mevcut ama hatalı (~)"),
+        Patch(facecolor=cell_colors["missing"], label="Eksik (✗)"),
+        Patch(facecolor=cell_colors["na"], label="Erişilemedi (-)"),
+    ]
+    ax.legend(handles=legend_elements, loc="upper right", bbox_to_anchor=(1.22, 1), fontsize=8)
+
+    fig.tight_layout()
+    fig.savefig(file_path, dpi=DPI, bbox_inches="tight")
+    plt.close(fig)
+
+    return str(file_path)
+
+
 def generate_all_charts(results: list[dict], timestamp: str) -> list[str]:
-    """Skor karşılaştırma, not dağılımı ve başlık kapsama grafiklerini tek seferde üretir.
+    """Skor karşılaştırma, not dağılımı, başlık kapsama ve varlık matrisi grafiklerini üretir.
 
     Args:
         results: Her biri bir sitenin analiz/skor sonucunu içeren sözlük listesi.
@@ -215,4 +299,5 @@ def generate_all_charts(results: list[dict], timestamp: str) -> list[str]:
         plot_score_comparison(results, DEFAULT_OUTPUT_DIR, timestamp),
         plot_grade_distribution(results, DEFAULT_OUTPUT_DIR, timestamp),
         plot_header_coverage(results, DEFAULT_OUTPUT_DIR, timestamp),
+        plot_header_matrix(results, DEFAULT_OUTPUT_DIR, timestamp),
     ]
