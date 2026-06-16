@@ -19,11 +19,25 @@ from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn, TimeEl
 from rich.table import Table
 
 from src.analyzer import DEFAULT_TIMEOUT, analyze_headers, analyze_url
+from src.headers_config import SECURITY_HEADERS
 from src.reporter import export_csv, export_json, export_markdown
 from src.scorer import calculate_score
 from src.visualizer import generate_all_charts
 
 REPORTS_DIR = "output/reports"
+
+HEADER_ABBREVIATIONS = {
+    "Strict-Transport-Security": "HSTS",
+    "Content-Security-Policy": "CSP",
+    "X-Frame-Options": "XFO",
+    "X-Content-Type-Options": "XCTO",
+    "Referrer-Policy": "Ref-P",
+    "Permissions-Policy": "Perm-P",
+    "X-XSS-Protection": "XSS-P",
+    "Cross-Origin-Opener-Policy": "COOP",
+    "Cross-Origin-Embedder-Policy": "COEP",
+    "Cross-Origin-Resource-Policy": "CORP",
+}
 
 GRADE_STYLES = {
     "A+": "bold green",
@@ -177,6 +191,36 @@ def print_summary_table(results: list[dict]) -> None:
     console.print(table)
 
 
+def print_header_matrix(results: list[dict]) -> None:
+    """Her site için hangi güvenlik başlıklarının mevcut olduğunu matris olarak yazdırır."""
+    header_names = list(SECURITY_HEADERS.keys())
+
+    table = Table(title="Güvenlik Başlığı Varlık Matrisi")
+    table.add_column("Site", style="cyan", overflow="fold", no_wrap=False)
+    for name in header_names:
+        table.add_column(HEADER_ABBREVIATIONS[name], justify="center")
+
+    for result in results:
+        label = result["url"].replace("https://", "").replace("http://", "").replace("www.", "")
+        if result.get("error"):
+            table.add_row(label, *["[dim]-[/dim]"] * len(header_names))
+            continue
+
+        cells = []
+        for name in header_names:
+            hr = result["headers_analysis"].get(name, {})
+            if hr.get("valid"):
+                cells.append("[green]✓[/green]")
+            elif hr.get("present"):
+                cells.append("[yellow]~[/yellow]")
+            else:
+                cells.append("[red]✗[/red]")
+        table.add_row(label, *cells)
+
+    console.print(table)
+    console.print("[dim]✓ geçerli  ~ mevcut ama hatalı  ✗ eksik[/dim]")
+
+
 def export_results(results: list[dict], output: str, timestamp: str) -> None:
     """Sonuçları seçilen formatlarda dışa aktarır (rapor dosyaları ve grafikler)."""
     formats = ["json", "csv", "markdown"] if output == "all" else [output]
@@ -232,6 +276,7 @@ def main(argv: list[str] | None = None) -> int:
                 print_verbose_details(result)
 
         print_summary_table(results)
+        print_header_matrix(results)
 
         valid_scores = [r["total_score"] for r in results if not r["error"]]
         if valid_scores:
