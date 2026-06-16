@@ -27,6 +27,7 @@ GRADE_COLORS = {
     "C": "#fb8c00",
     "D": "#e53935",
     "F": "#b71c1c",
+    "N/A": "#9e9e9e",
 }
 
 GRADE_ORDER = ["A+", "A", "B", "C", "D", "F"]
@@ -72,7 +73,7 @@ def plot_score_comparison(
         {
             "label": _short_label(r["url"]),
             "score": r["total_score"] if not r.get("error") else 0.0,
-            "grade": r["letter_grade"] if not r.get("error") else "F",
+            "grade": r["letter_grade"],
         }
         for r in results
     ]
@@ -122,8 +123,9 @@ def plot_grade_distribution(
 
     counts = {grade: 0 for grade in GRADE_ORDER}
     for r in results:
-        grade = r["letter_grade"] if not r.get("error") else "F"
-        counts[grade] = counts.get(grade, 0) + 1
+        if r.get("error"):
+            continue
+        counts[r["letter_grade"]] = counts.get(r["letter_grade"], 0) + 1
 
     labels = [grade for grade in GRADE_ORDER if counts[grade] > 0]
     sizes = [counts[grade] for grade in labels]

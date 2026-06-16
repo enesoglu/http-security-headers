@@ -151,6 +151,16 @@ def calculate_score(analysis_result: dict) -> dict[str, Any]:
         ``{"total_score", "letter_grade", "headers_present", "headers_missing",
         "critical_issues", "recommendations"}`` anahtarlarını içeren bir sözlük.
     """
+    if analysis_result.get("error"):
+        return {
+            "total_score": None,
+            "letter_grade": "N/A",
+            "headers_present": 0,
+            "headers_missing": len(SECURITY_HEADERS),
+            "critical_issues": [f"Bağlantı hatası: {analysis_result['error']}"],
+            "recommendations": [],
+        }
+
     headers_analysis: dict = analysis_result.get("headers_analysis", {})
 
     weighted_total = 0.0

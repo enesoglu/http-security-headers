@@ -210,7 +210,7 @@ def export_markdown(results: list[dict], output_path: str) -> str:
     table_rows = []
     for r in results:
         if r.get("error"):
-            table_rows.append([r["url"], "-", "F", "-", "-", "-"])
+            table_rows.append([r["url"], "-", "N/A", "-", "-", "-"])
         else:
             table_rows.append(
                 [
