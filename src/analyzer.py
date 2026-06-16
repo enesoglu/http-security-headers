@@ -16,18 +16,49 @@ from typing import Any
 import requests
 from requests.exceptions import ConnectionError, RequestException, SSLError, Timeout
 
+try:
+    from curl_cffi import requests as cffi_requests
+    _CURL_CFFI_AVAILABLE = True
+except ImportError:
+    _CURL_CFFI_AVAILABLE = False
+
 from src.headers_config import SECURITY_HEADERS
 
 USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 DEFAULT_TIMEOUT = 20
 
+_BROWSER_HEADERS = {
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+    "Accept-Language": "tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7",
+    "Accept-Encoding": "gzip, deflate, br",
+    "Upgrade-Insecure-Requests": "1",
+}
+
+
+def _fetch(url: str, timeout: int) -> Any:
+    """curl_cffi varsa Chrome120 TLS parmakiziyle, yoksa requests ile GET atar."""
+    if _CURL_CFFI_AVAILABLE:
+        return cffi_requests.get(
+            url,
+            impersonate="chrome120",
+            timeout=timeout,
+            headers=_BROWSER_HEADERS,
+            allow_redirects=True,
+        )
+    session = requests.Session()
+    session.headers.update({"User-Agent": USER_AGENT, **_BROWSER_HEADERS})
+    try:
+        return session.get(url, timeout=timeout, allow_redirects=True)
+    finally:
+        session.close()
+
 
 def analyze_url(url: str, timeout: int = DEFAULT_TIMEOUT) -> dict[str, Any]:
     """Verilen URL'e istek atar ve bağlantı/yanıt bilgilerini döndürür.
 
-    Önce HEAD isteği denenir; sunucu HEAD'i desteklemiyorsa veya hata
-    döndürüyorsa GET isteğine düşülür. HTTP'den HTTPS'e yönlendirmeler
-    ``requests`` tarafından otomatik takip edilir.
+    curl_cffi kuruluysa Chrome120 TLS parmakiziyle istek atılır; kurulu
+    değilse standart requests kullanılır. HTTP'den HTTPS'e yönlendirmeler
+    otomatik takip edilir.
 
     Returns:
         Aşağıdaki anahtarları içeren bir sözlük::
@@ -54,24 +85,16 @@ def analyze_url(url: str, timeout: int = DEFAULT_TIMEOUT) -> dict[str, Any]:
         "response_time_ms": 0.0,
     }
 
-    session = requests.Session()
-    session.headers.update({"User-Agent": USER_AGENT})
-
     start = time.perf_counter()
 
     try:
-        try:
-            response = session.head(url, timeout=timeout, allow_redirects=True)
-            if response.status_code >= 400 or not response.headers:
-                response = session.get(url, timeout=timeout, allow_redirects=True)
-        except RequestException:
-            response = session.get(url, timeout=timeout, allow_redirects=True)
+        response = _fetch(url, timeout)
 
         result["status_code"] = response.status_code
-        result["final_url"] = response.url
+        result["final_url"] = str(response.url)
         result["headers"] = dict(response.headers)
-        result["redirected"] = bool(response.history) or response.url != url
-        result["https"] = response.url.lower().startswith("https://")
+        result["redirected"] = bool(response.history) or str(response.url) != url
+        result["https"] = str(response.url).lower().startswith("https://")
 
     except SSLError:
         result["error"] = "SSL sertifika hatası: Sitenin SSL sertifikası doğrulanamadı."
@@ -81,9 +104,10 @@ def analyze_url(url: str, timeout: int = DEFAULT_TIMEOUT) -> dict[str, Any]:
         result["error"] = "Bağlantı kurulamadı: Sunucuya erişilemiyor veya adres çözümlenemiyor."
     except RequestException as exc:
         result["error"] = f"İstek sırasında bir hata oluştu: {exc}"
+    except Exception as exc:
+        result["error"] = f"İstek sırasında bir hata oluştu: {exc}"
     finally:
         result["response_time_ms"] = round((time.perf_counter() - start) * 1000, 2)
-        session.close()
 
     return result
 
