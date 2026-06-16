@@ -19,11 +19,11 @@ HTTPS_PENALTY_RATIO = 0.20
 
 # (alt sınır, harf notu) - büyükten küçüğe sıralı.
 GRADE_THRESHOLDS: list[tuple[float, str]] = [
-    (90, "A+"),
-    (80, "A"),
-    (70, "B"),
-    (60, "C"),
-    (50, "D"),
+    (85, "A+"),
+    (75, "A"),
+    (65, "B"),
+    (50, "C"),
+    (35, "D"),
     (0, "F"),
 ]
 
