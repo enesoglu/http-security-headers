@@ -210,15 +210,15 @@ def print_header_matrix(results: list[dict]) -> None:
         for name in header_names:
             hr = result["headers_analysis"].get(name, {})
             if hr.get("valid"):
-                cells.append("[green]✓[/green]")
+                cells.append("[green]OK[/green]")
             elif hr.get("present"):
-                cells.append("[yellow]~[/yellow]")
+                cells.append("[yellow]?[/yellow]")
             else:
-                cells.append("[red]✗[/red]")
+                cells.append("[red]NO[/red]")
         table.add_row(label, *cells)
 
     console.print(table)
-    console.print("[dim]✓ geçerli  ~ mevcut ama hatalı  ✗ eksik[/dim]")
+    console.print("[dim]OK=gecerli  ?=mevcut ama hatali  NO=eksik  -=erisilemedi[/dim]")
 
 
 def export_results(results: list[dict], output: str, timestamp: str) -> None:
