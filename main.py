@@ -157,7 +157,7 @@ def print_summary_table(results: list[dict]) -> None:
             table.add_row(
                 result["url"],
                 "-",
-                "[bold red]F[/bold red]",
+                "[dim]N/A[/dim]",
                 "-",
                 f"[red]{result['error']}[/red]",
             )

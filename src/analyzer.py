@@ -18,8 +18,8 @@ from requests.exceptions import ConnectionError, RequestException, SSLError, Tim
 
 from src.headers_config import SECURITY_HEADERS
 
-USER_AGENT = "SecurityHeadersAnalyzer/1.0"
-DEFAULT_TIMEOUT = 10
+USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+DEFAULT_TIMEOUT = 20
 
 
 def analyze_url(url: str, timeout: int = DEFAULT_TIMEOUT) -> dict[str, Any]:
