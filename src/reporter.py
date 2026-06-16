@@ -208,13 +208,18 @@ def export_markdown(results: list[dict], output_path: str) -> str:
     lines.append("")
 
     table_rows = []
+    has_4xx = False
     for r in results:
         if r.get("error"):
             table_rows.append([r["url"], "-", "N/A", "-", "-", "-"])
         else:
+            url_cell = r["url"]
+            if r.get("status_code") and r["status_code"] >= 400:
+                url_cell += f" ⚠ HTTP {r['status_code']}"
+                has_4xx = True
             table_rows.append(
                 [
-                    r["url"],
+                    url_cell,
                     f"{r['total_score']:.2f}",
                     r["letter_grade"],
                     r["headers_present"],
@@ -230,6 +235,14 @@ def export_markdown(results: list[dict], output_path: str) -> str:
             tablefmt="github",
         )
     )
+    if has_4xx:
+        lines.append("")
+        lines.append(
+            "> **⚠ Uyarı:** `⚠ HTTP 4xx` etiketli siteler bot-engelleme veya WAF "
+            "katmanından 4xx yanıtı döndürmüştür. Analiz edilen başlıklar gerçek "
+            "sitenin normal 200 yanıtındaki başlıklardan farklı olabilir; "
+            "sonuçlar bu siteler için temsili olmayabilir."
+        )
     lines.append("")
 
     # Detaylı analiz
@@ -252,13 +265,25 @@ def export_markdown(results: list[dict], output_path: str) -> str:
         lines.append(f"- **Yanıt Süresi:** {r['response_time_ms']} ms")
         lines.append("")
 
-        lines.append("| Başlık | Durum | Değer |")
-        lines.append("|---|---|---|")
+        if r.get("status_code") and r["status_code"] >= 400:
+            lines.append(
+                f"> **⚠ HTTP {r['status_code']} Uyarısı:** Bu site bot-engelleme veya WAF "
+                "katmanından hata yanıtı döndürmüştür. Aşağıdaki başlıklar gerçek "
+                "sitenin normal yanıtını yansıtmıyor olabilir."
+            )
+            lines.append("")
+
+        lines.append("| Başlık | Durum | Değer | Sorunlar |")
+        lines.append("|---|---|---|---|")
         for header_name in SECURITY_HEADERS:
             header_result = r["headers_analysis"].get(header_name, {})
             status = _header_status_label(header_result)
             value = _format_header_value(header_result.get("value", ""))
-            lines.append(f"| {header_name} | {status} | {value} |")
+            issues = header_result.get("issues", [])
+            issues_cell = "; ".join(issues) if issues else "-"
+            if len(issues_cell) > 120:
+                issues_cell = issues_cell[:117] + "..."
+            lines.append(f"| {header_name} | {status} | {value} | {issues_cell} |")
         lines.append("")
 
         if r["critical_issues"]:

@@ -179,9 +179,13 @@ def print_summary_table(results: list[dict]) -> None:
 
         grade = result["letter_grade"]
         style = GRADE_STYLES.get(grade, "white")
+        status_code = result.get("status_code") or 0
+        url_cell = result["url"]
+        if status_code >= 400:
+            url_cell += f" [yellow](HTTP {status_code})[/yellow]"
 
         table.add_row(
-            result["url"],
+            url_cell,
             f"{result['total_score']:.2f}",
             f"[{style}]{grade}[/{style}]",
             str(result["headers_missing"]),
